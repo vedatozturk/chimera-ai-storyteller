@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chimera - Adaptif Hikaye</title>
+    
+    <style>
+        body {
+            font-family: 'Helvetica Neue', sans-serif;
+            background-color: #121212;
+            color: #E0E0E0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        #game-container {
+            width: 90%;
+            max-width: 600px;
+            height: 90vh;
+            border: 1px solid #444;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            background-color: #1E1E1E;
+        }
+        #story-window {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            border-bottom: 1px solid #444;
+        }
+        #story-window p {
+            margin: 0 0 15px 0;
+            line-height: 1.6;
+        }
+        #input-area {
+            display: flex;
+            padding: 10px;
+        }
+        #action-input {
+            flex-grow: 1;
+            padding: 12px;
+            border: 1px solid #444;
+            border-radius: 5px;
+            background-color: #252525;
+            color: #E0E0E0;
+            font-size: 16px;
+        }
+        #send-button {
+            padding: 0 20px;
+            margin-left: 10px;
+            border: none;
+            border-radius: 5px;
+            background-color: #007BFF;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        #send-button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="story-window">
+            <p><strong>Chimera:</strong> Maceraya hoş geldin. Lütfen karakterinin adını girerek başla.</p>
+        </div>
+        
+        <div id="input-area">
+            <input type="text" id="action-input" placeholder="Ne yapacaksın?">
+            <button id="send-button">Gönder</button>
+        </div>
+    </div>
+    
+    <script>
+        const storyWindow = document.getElementById('story-window');
+        const actionInput = document.getElementById('action-input');
+        const sendButton = document.getElementById('send-button');
+
+        const API_URL = 'http://127.0.0.1:8000';
+        let creationStep = 'NAME';
+        let characterBuilder = {};
+        let gameState = null;
+
+        function addStoryText(text) {
+            const newParagraph = document.createElement('p');
+            newParagraph.innerHTML = `<strong>Chimera:</strong> ${text}`;
+            storyWindow.appendChild(newParagraph);
+            storyWindow.scrollTop = storyWindow.scrollHeight;
+        }
+
+        function addPlayerActionText(text) {
+            const playerParagraph = document.createElement('p');
+            playerParagraph.textContent = `> ${text}`;
+            storyWindow.appendChild(playerParagraph);
+            storyWindow.scrollTop = storyWindow.scrollHeight;
+        }
+
+        function initializeGame() {
+            const initialPlayerState = {
+                name: characterBuilder.name,
+                character_class: characterBuilder.character_class,
+                trait: characterBuilder.trait,
+                health: 100,
+                inventory: []
+            };
+            
+            gameState = {
+                player_state: initialPlayerState,
+                npc_states: {},
+                story_log: [`Maceran başlıyor, ${characterBuilder.name}!`],
+                world_state: {}
+            };
+
+            addStoryText(`--- Karakter Yaratıldı! ---<br>
+                          Hoş geldin, ${characterBuilder.name}! Sen ${characterBuilder.trait} bir ${characterBuilder.character_class}'sın.`);
+            addStoryText(gameState.story_log[0]);
+            
+            creationStep = 'PLAYING';
+            actionInput.placeholder = "Ne yapacaksın?";
+        }
+
+        async function sendActionToAPI(actionText) {
+            const payload = {
+                "current_state": gameState,
+                "user_action": {"action": actionText}
+            };
+            
+            actionInput.disabled = true;
+            sendButton.disabled = true;
+
+            try {
+                const response = await fetch(`${API_URL}/turn`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) throw new Error(`Sunucu hatası: ${response.statusText}`);
+
+                const newState = await response.json();
+                gameState = newState;
+
+                addStoryText(gameState.story_log[gameState.story_log.length - 1]);
+
+            } catch (error) {
+                addStoryText(`HATA: Sunucuya bağlanılamadı. (Hata: ${error.message})`);
+            } finally {
+                actionInput.disabled = false;
+                sendButton.disabled = false;
+                actionInput.focus();
+            }
+        }
+
+        async function handleSendAction() {
+            const actionText = actionInput.value.trim();
+            if (!actionText) return;
+
+            if (creationStep !== 'NAME') {
+                addPlayerActionText(actionText);
+            }
+            
+            switch (creationStep) {
+                case 'NAME':
+                    characterBuilder.name = actionText;
+                    addStoryText("Bir sınıf seç:<br>1: Savaşçı<br>2: Büyücü<br>3: Haydut");
+                    creationStep = 'CLASS';
+                    break;
+                
+                case 'CLASS':
+                    const classMap = {"1": "Savaşçı", "2": "Büyücü", "3": "Haydut"};
+                    characterBuilder.character_class = classMap[actionText] || "Savaşçı";
+                    addStoryText("Bir karakter özelliği seç:<br>1: Cesur<br>2: Meraklı<br>3: Kurnaz");
+                    creationStep = 'TRAIT';
+                    break;
+                    
+                case 'TRAIT':
+                    const traitMap = {"1": "Cesur", "2": "Meraklı", "3": "Kurnaz"};
+                    characterBuilder.trait = traitMap[actionText] || "Cesur";
+                    initializeGame();
+                    break;
+                    
+                case 'PLAYING':
+                    await sendActionToAPI(actionText);
+                    break;
+            }
+            
+            actionInput.value = '';
+        }
+
+        sendButton.addEventListener('click', handleSendAction);
+        
+        actionInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                handleSendAction();
+            }
+        });
+    </script>
+</body>
+</html>
