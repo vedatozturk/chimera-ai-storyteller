@@ -38,8 +38,7 @@ cd chimera-ai-storyteller
 2. Set Up a Virtual Environment
 
 python -m venv venv
-venv\Scripts\activate  # On Windows
-# source venv/bin/activate  # On Mac/Linux
+venv\Scripts\activate  # On Windows # source venv/bin/activate  # On Mac/Linux
 
 
 
